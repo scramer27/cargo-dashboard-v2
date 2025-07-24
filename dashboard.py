@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from streamlit.components.v1 import html
+import os
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -12,40 +12,10 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- Theme Detection and Logo Switching ---
-# Use a JS-based approach to get the theme and store it in session_state
-if 'theme' not in st.session_state:
-    st.session_state.theme = "light" # Default
-
-# JavaScript to detect the theme and send it back to Streamlit
-js_code = """
-<script>
-const observer = new MutationObserver(function(mutations) {
-    for (const mutation of mutations) {
-        if (mutation.attributeName === 'class') {
-            const isDark = mutation.target.classList.contains('dark');
-            const theme = isDark ? 'dark' : 'light';
-            window.parent.Streamlit.setComponentValue(theme);
-            // We can disconnect after the first detection if we want
-            // observer.disconnect(); 
-        }
-    }
-});
-observer.observe(window.parent.document.body, { attributes: true });
-
-// Also send the initial theme
-const initialTheme = window.parent.document.body.classList.contains('dark') ? 'dark' : 'light';
-window.parent.Streamlit.setComponentValue(initialTheme);
-</script>
-"""
-
-# Execute the JS and get the theme
-theme_from_js = html(js_code, height=0, width=0)
-
-if theme_from_js:
-    st.session_state.theme = theme_from_js
-
-logo_path = "cargo_logo_dark.png" if st.session_state.theme == "dark" else "cargo_logo.png"
+# --- Simple Logo Display ---
+logo_path = "cargo_logo.png"  # Just use one logo
+if os.path.exists(logo_path):
+    st.image(logo_path, width=400)
 
 # --- Custom CSS for a Polished Look & Responsiveness ---
 st.markdown("""
@@ -621,7 +591,6 @@ road_test_data = load_data('master_report.xlsx')
 benchmark_data = load_data('benchmark_report.xlsx')
 
 # Display the logo and the title underneath
-st.image(logo_path, width=400)
 st.title("Performance Dashboard")
 
 # --- Main Tabs ---
