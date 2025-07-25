@@ -582,6 +582,92 @@ def create_dashboard_view(summary_df, error_summary_df, all_data, key_prefix):
                     st.write("No failure data found in expected location.")
             else:
                 st.write("Could not determine where to look for failure data.")
+
+            # --- Raw Log File Display Section ---
+            st.subheader("Complete Log File")
+            
+            if selected_day:
+                # Extract the day number from the selected day (e.g., "Day 1" -> "1")
+                day_number = selected_day.split(' ')[1]
+                
+                # Look for corresponding log files in the archive folder
+                import glob
+                import json
+                
+                # Search for log files that might correspond to this day
+                log_files = glob.glob("archive/logs_*.json")
+                
+                if log_files:
+                    # Sort log files by date to match with day numbers
+                    log_files.sort()
+                    
+                    # Try to match the day number with the log file index
+                    try:
+                        day_idx = int(day_number) - 1  # Convert to 0-based index
+                        if 0 <= day_idx < len(log_files):
+                            selected_log_file = log_files[day_idx]
+                            
+                            st.markdown(f"**📄 Log File: `{selected_log_file}`**")
+                            
+                            try:
+                                with open(selected_log_file, 'r') as f:
+                                    log_content = f.read()
+                                
+                                # Display file info
+                                import os
+                                file_size = os.path.getsize(selected_log_file)
+                                log_lines = log_content.strip().split('\n')
+                                st.info(f"📁 **File:** {selected_log_file} | **Size:** {file_size:,} bytes | **Lines:** {len(log_lines):,}")
+                                
+                                # Download button
+                                st.download_button(
+                                    label=f"⬇️ Download {os.path.basename(selected_log_file)}",
+                                    data=log_content,
+                                    file_name=os.path.basename(selected_log_file),
+                                    mime="application/json",
+                                    key=f"{key_prefix}_download_{day_number}"
+                                )
+                                
+                                # Checkbox to show/hide the log content
+                                show_raw_log = st.checkbox(
+                                    f"Show complete log file content for {selected_day}",
+                                    key=f"{key_prefix}_show_log_{day_number}"
+                                )
+                                
+                                if show_raw_log:
+                                    st.markdown("**📋 Complete Log File (Raw Text):**")
+                                    st.text_area(
+                                        "Log Content",
+                                        value=log_content,
+                                        height=400,
+                                        key=f"{key_prefix}_log_content_{day_number}"
+                                    )
+                                
+                            except FileNotFoundError:
+                                st.error(f"❌ Log file {selected_log_file} not found.")
+                            except Exception as e:
+                                st.error(f"❌ Error reading log file: {e}")
+                        else:
+                            st.warning(f"⚠️ No log file found for {selected_day}. Available log files: {len(log_files)}")
+                            
+                            # Show available log files for debugging
+                            with st.expander("🔍 Available log files"):
+                                for i, log_file in enumerate(log_files):
+                                    st.write(f"Day {i+1}: `{log_file}`")
+                    
+                    except ValueError:
+                        st.error("❌ Could not parse day number from selection.")
+                else:
+                    st.warning("⚠️ No log files found in the archive folder.")
+                    
+                    # Also check if there are any log files in the logs folder
+                    current_log_files = glob.glob("logs/*.json")
+                    if current_log_files:
+                        st.info(f"ℹ️ Found {len(current_log_files)} log files in the logs folder that haven't been processed yet.")
+            
+            else:
+                st.info("👆 Select a day above to view the corresponding log file.")
+
     else:
         st.info("No daily detail sheets found in the report to display.")
 
