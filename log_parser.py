@@ -94,6 +94,8 @@ def _normalize_error_message(error_message):
         return "Motion: Pick/Raise Execution Failed"
     if "waypoint execution failed" in lower_message:
         return "Motion: Waypoint Execution Failed"
+    if "not calibrated" in lower_message:
+        return "Motion: System Not Calibrated"
     
     # End Effector Failures
     if "vacuum not achieved" in lower_message:
@@ -114,6 +116,20 @@ def _normalize_error_message(error_message):
         return "Vision: Server Error"
     if "connection refused" in lower_message or "max retries exceeded" in lower_message or "read timed out" in lower_message:
         return "Vision: Connection Error"
+
+    # OCR/Database Failures
+    if "ocr timeout waiting for package" in lower_message:
+        return "Database: OCR Timeout"
+    if "timeout waiting for package" in lower_message:
+        return "Database: Package Timeout"
+
+    # Network/API Failures
+    if "connecttimeouterror" in lower_message or "connection to cargo-robotics.com timed out" in lower_message:
+        return "Network: API Connection Timeout"
+    if "no route to host" in lower_message:
+        return "Network: No Route to Host"
+    if "error querying server for packages" in lower_message:
+        return "Network: Package Query Failed"
 
     # General/Unknown
     if "package length is too long" in lower_message or "package height is too high" in lower_message:
@@ -140,6 +156,9 @@ def process_log_file(log_file_path):
     error_type_counts = Counter()
     log_date = None
 
+    # Track unique package attempts to avoid double-counting retries
+    attempted_package_ids = set()
+
     with open(log_file_path, 'r') as f_in:
         for line in f_in:
             try:
@@ -165,11 +184,58 @@ def process_log_file(log_file_path):
                 elif "Retrieve Packages Callback" in event_label:
                     # --- Logic Switch based on date ---
                     log_datetime = pd.to_datetime(timestamp)
+                    cutoff_date_fix_logic = pd.to_datetime("2025-07-31")  # NEW: Fix #1 cutoff
                     cutoff_date_new_logic = pd.to_datetime("2025-07-23")
                     cutoff_date_old_logic = pd.to_datetime("2025-07-22")
 
-                    if log_datetime >= cutoff_date_new_logic:
-                        # --- NEWEST LOGIC (>= 2025-07-23) ---
+                    if log_datetime >= cutoff_date_fix_logic:
+                        # --- FIX #1 LOGIC (>= 2025-07-31) ---
+                        # Count unique package attempts (don't double-count retries)
+                        current_attempt_ids = set()
+                        failed_ids = set()
+
+                        for log_msg in log_entry.get("logs", []):
+                            # Get all attempted IDs first
+                            attempt_match = re.search(r"Retrieving packages with IDs: \[([\d, ]+)\]", log_msg.get("message", ""))
+                            if attempt_match:
+                                ids_str = attempt_match.group(1)
+                                if ids_str:
+                                    current_attempt_ids.update([int(i.strip()) for i in ids_str.split(',')])
+                            
+                            # Find the specific packages that failed
+                            failure_match = re.search(r"Retrieve finished with failed packages: \[([\d, ]+)\]", log_msg.get("message", ""))
+                            if failure_match:
+                                failed_ids_str = failure_match.group(1)
+                                if failed_ids_str:
+                                    failed_ids.update([int(i.strip()) for i in failed_ids_str.split(',')])
+
+                        # FIX #1: Only count NEW package attempts (no retries)
+                        new_attempts = current_attempt_ids - attempted_package_ids
+                        retrieval_attempts += len(new_attempts)
+                        attempted_package_ids.update(new_attempts)
+                        
+                        timings = log_entry.get("timings", {})
+                        for key, value in timings.items():
+                            if "Pick and Place Call" in key:
+                                try:
+                                    pkg_id_match = re.search(r'\d+', key)
+                                    if not pkg_id_match: continue
+                                    
+                                    pkg_id = int(pkg_id_match.group())
+                                    # CRITICAL FIX: Only count the event if the package ID is NOT in the failed set.
+                                    if pkg_id not in failed_ids:
+                                        retrieval_time = get_total_time(value)
+                                        if retrieval_time is not None:
+                                            all_retrieve_events.append({
+                                                "Timestamp": timestamp,
+                                                "Event Label": f"Individual Retrieval (ID: {pkg_id})",
+                                                "Time (s)": retrieval_time,
+                                                "Package ID": pkg_id
+                                            })
+                                except (AttributeError, ValueError, TypeError):
+                                    continue
+                    elif log_datetime >= cutoff_date_new_logic:
+                        # --- NEWEST LOGIC (>= 2025-07-23, < 2025-07-31) ---
                         # Handles partial success by explicitly checking for failed package IDs.
                         attempted_ids = set()
                         failed_ids = set()
@@ -272,7 +338,7 @@ def process_log_file(log_file_path):
                 
                 if not is_success:
                     error_message = "Error message not found"
-                    # find the first error or warning message in the logs
+                    # Find the first error or warning message in the logs
                     for level in ["ERROR", "WARN"]:
                         for log_msg in log_entry.get("logs", []):
                             if log_msg.get("level") == level:
@@ -281,6 +347,14 @@ def process_log_file(log_file_path):
                         if error_message != "Error message not found":
                             break
                     
+                    # If no error found in this event, check if it's a callback event
+                    # and look for the preceding event's error
+                    if error_message == "Error message not found" and "Callback" in event_label:
+                        # This is a workaround for the vacuum failure case
+                        # where the error is in "Execute Pick and Raise" but reported in "Execute Pick and Place Callback"
+                        if "Execute Pick and Place Callback" in event_label:
+                            error_message = "Vacuum not achieved (inferred from callback failure)"
+                    
                     normalized_error = _normalize_error_message(error_message)
                     if normalized_error: # Only count if it's a valid, non-ignored error
                         total_error_count += 1
@@ -288,7 +362,8 @@ def process_log_file(log_file_path):
                         file_failures.append({
                             "Timestamp": timestamp,
                             "Error Type": event_label or "Unknown Event",
-                            "Error Message": error_message
+                            "Error Message": error_message,
+                            "Normalized Category": normalized_error
                         })
             except (json.JSONDecodeError, TypeError):
                 continue
