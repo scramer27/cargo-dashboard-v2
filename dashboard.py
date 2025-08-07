@@ -159,7 +159,7 @@ def create_dashboard_view(summary_df, error_summary_df, all_data, key_prefix):
             prev_retrieval_rate = (prev_day_stats['Packages Retrieved'] / prev_day_stats['Retrieval Attempts'] * 100) if prev_day_stats['Retrieval Attempts'] > 0 else 0
 
             kpi_data = {
-                'Metric': ['Stow Avg (s)', 'Retrieve Avg (s)', 'Read Label Avg (s)', 'Throughput (pkg/hr)', 'Stow Success Rate', 'Retrieval Success Rate'],
+                'Metric': ['Package Pickup Avg (s)', 'Retrieve Avg (s)', 'Read Label Avg (s)', 'Throughput (pkg/hr)', 'Stow Success Rate', 'Retrieval Success Rate'],
                 'Overall Average': [
                     f"{summary_df['Stow Avg (s)'].mean():.2f}", f"{summary_df['Retrieve Avg (s)'].mean():.2f}",
                     f"{summary_df['Read Label Avg (s)'].mean():.2f}", f"{summary_df['Throughput (pkg/hr)'].mean():.2f}",
@@ -378,7 +378,13 @@ def create_dashboard_view(summary_df, error_summary_df, all_data, key_prefix):
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("<h4>Average Process Times</h4>", unsafe_allow_html=True)
-            fig = px.line(summary_df, x='Log', y=['Stow Avg (s)', 'Retrieve Avg (s)', 'Read Label Avg (s)'], markers=True)
+            
+            # Create a copy of the dataframe for display purposes
+            display_df = summary_df.copy()
+            if 'Stow Avg (s)' in display_df.columns:
+                display_df = display_df.rename(columns={'Stow Avg (s)': 'Package Pickup Avg (s)'})
+            
+            fig = px.line(display_df, x='Log', y=['Package Pickup Avg (s)', 'Retrieve Avg (s)', 'Read Label Avg (s)'], markers=True)
             fig.update_xaxes(dtick=1) # Set x-axis ticks to integers
             fig.update_yaxes(title_text='Time (s)')
             st.plotly_chart(fig, use_container_width=True)
