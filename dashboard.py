@@ -116,9 +116,12 @@ def create_dashboard_view(summary_df, error_summary_df, all_data, key_prefix):
 
     # Convert relevant columns to numeric, coercing errors
     numeric_cols = [
-        'Stow Avg (s)', 'Retrieve Avg (s)', 'Read Label Avg (s)', 'Throughput (pkg/hr)',
-        'Packages Stowed', 'Stow Attempts', 'Packages Retrieved', 'Retrieval Attempts',
-        'Total Errors', 'Stow Driver Shift Time (hr)', 'Retrieve Driver Shift Time (hr)'
+        'Package Pickup Avg (s)', 'Package Pick Avg (s)', 'Stow Avg (s)', 
+        'Retrieve Avg (s)', 'Read Label Avg (s)', 'Throughput (pkg/hr)',
+        'Packages Picked Up', 'Pickup Attempts', 'Packages Picked', 'Pick Attempts',
+        'Packages Retrieved', 'Retrieval Attempts',  # UNCHANGED: Keep retrievals
+        'Total Errors', 'Pickup Driver Shift Time (hr)', 'Pick Driver Shift Time (hr)',
+        'Retrieve Driver Shift Time (hr)'  # UNCHANGED
     ]
     for col in numeric_cols:
         if col in summary_df.columns:
@@ -149,33 +152,56 @@ def create_dashboard_view(summary_df, error_summary_df, all_data, key_prefix):
                 return f'<span style="color:{color};">{change:+.2f} pts</span>'
 
             # --- Calculate Overall Averages & Rates ---
-            stow_rate_overall = (summary_df['Packages Stowed'].sum() / summary_df['Stow Attempts'].sum() * 100) if summary_df['Stow Attempts'].sum() > 0 else 0
+            pickup_rate_overall = (summary_df['Packages Picked Up'].sum() / summary_df['Pickup Attempts'].sum() * 100) if summary_df['Pickup Attempts'].sum() > 0 else 0
+            pick_rate_overall = (summary_df['Packages Picked'].sum() / summary_df['Pick Attempts'].sum() * 100) if summary_df['Pick Attempts'].sum() > 0 else 0
             retrieve_rate_overall = (summary_df['Packages Retrieved'].sum() / summary_df['Retrieval Attempts'].sum() * 100) if summary_df['Retrieval Attempts'].sum() > 0 else 0
 
             # --- Calculate Last & Previous Day Rates ---
-            last_stow_rate = (last_day_stats['Packages Stowed'] / last_day_stats['Stow Attempts'] * 100) if last_day_stats['Stow Attempts'] > 0 else 0
+            last_pickup_rate = (last_day_stats['Packages Picked Up'] / last_day_stats['Pickup Attempts'] * 100) if last_day_stats['Pickup Attempts'] > 0 else 0
+            last_pick_rate = (last_day_stats['Packages Picked'] / last_day_stats['Pick Attempts'] * 100) if last_day_stats['Pick Attempts'] > 0 else 0
             last_retrieval_rate = (last_day_stats['Packages Retrieved'] / last_day_stats['Retrieval Attempts'] * 100) if last_day_stats['Retrieval Attempts'] > 0 else 0
-            prev_stow_rate = (prev_day_stats['Packages Stowed'] / prev_day_stats['Stow Attempts'] * 100) if prev_day_stats['Stow Attempts'] > 0 else 0
+            
+            prev_pickup_rate = (prev_day_stats['Packages Picked Up'] / prev_day_stats['Pickup Attempts'] * 100) if prev_day_stats['Pickup Attempts'] > 0 else 0
+            prev_pick_rate = (prev_day_stats['Packages Picked'] / prev_day_stats['Pick Attempts'] * 100) if prev_day_stats['Pick Attempts'] > 0 else 0
             prev_retrieval_rate = (prev_day_stats['Packages Retrieved'] / prev_day_stats['Retrieval Attempts'] * 100) if prev_day_stats['Retrieval Attempts'] > 0 else 0
 
             kpi_data = {
-                'Metric': ['Package Pickup Avg (s)', 'Retrieve Avg (s)', 'Read Label Avg (s)', 'Throughput (pkg/hr)', 'Stow Success Rate', 'Retrieval Success Rate'],
+                'Metric': [
+                    'Package Pickup Avg (s)', 'Package Pick Avg (s)', 'Combined Stow Avg (s)', 
+                    'Retrieve Avg (s)', 'Read Label Avg (s)', 'Throughput (pkg/hr)', 
+                    'Pickup Success Rate', 'Pick Success Rate', 'Retrieval Success Rate'
+                ],
                 'Overall Average': [
-                    f"{summary_df['Stow Avg (s)'].mean():.2f}", f"{summary_df['Retrieve Avg (s)'].mean():.2f}",
-                    f"{summary_df['Read Label Avg (s)'].mean():.2f}", f"{summary_df['Throughput (pkg/hr)'].mean():.2f}",
-                    f"{stow_rate_overall:.2f}%", f"{retrieve_rate_overall:.2f}%"
+                    f"{summary_df['Package Pickup Avg (s)'].mean():.2f}",
+                    f"{summary_df['Package Pick Avg (s)'].mean():.2f}",
+                    f"{summary_df['Stow Avg (s)'].mean():.2f}",
+                    f"{summary_df['Retrieve Avg (s)'].mean():.2f}",
+                    f"{summary_df['Read Label Avg (s)'].mean():.2f}",
+                    f"{summary_df['Throughput (pkg/hr)'].mean():.2f}",
+                    f"{pickup_rate_overall:.2f}%",
+                    f"{pick_rate_overall:.2f}%",
+                    f"{retrieve_rate_overall:.2f}%"
                 ],
                 'Most Recent Day': [
-                    f"{last_day_stats['Stow Avg (s)']:.2f}", f"{last_day_stats['Retrieve Avg (s)']:.2f}",
-                    f"{last_day_stats['Read Label Avg (s)']:.2f}", f"{last_day_stats['Throughput (pkg/hr)']:.2f}",
-                    f"{last_stow_rate:.2f}%", f"{last_retrieval_rate:.2f}%"
+                    f"{last_day_stats['Package Pickup Avg (s)']:.2f}",
+                    f"{last_day_stats['Package Pick Avg (s)']:.2f}",
+                    f"{last_day_stats['Stow Avg (s)']:.2f}",
+                    f"{last_day_stats['Retrieve Avg (s)']:.2f}",
+                    f"{last_day_stats['Read Label Avg (s)']:.2f}",
+                    f"{last_day_stats['Throughput (pkg/hr)']:.2f}",
+                    f"{last_pickup_rate:.2f}%",
+                    f"{last_pick_rate:.2f}%",
+                    f"{last_retrieval_rate:.2f}%"
                 ],
                 'Change from Prev. Day': [
+                    get_change(last_day_stats['Package Pickup Avg (s)'], prev_day_stats['Package Pickup Avg (s)'], is_time=True),
+                    get_change(last_day_stats['Package Pick Avg (s)'], prev_day_stats['Package Pick Avg (s)'], is_time=True),
                     get_change(last_day_stats['Stow Avg (s)'], prev_day_stats['Stow Avg (s)'], is_time=True),
                     get_change(last_day_stats['Retrieve Avg (s)'], prev_day_stats['Retrieve Avg (s)'], is_time=True),
                     get_change(last_day_stats['Read Label Avg (s)'], prev_day_stats['Read Label Avg (s)'], is_time=True),
                     get_change(last_day_stats['Throughput (pkg/hr)'], prev_day_stats['Throughput (pkg/hr)']),
-                    get_rate_change(last_stow_rate, prev_stow_rate),
+                    get_rate_change(last_pickup_rate, prev_pickup_rate),
+                    get_rate_change(last_pick_rate, prev_pick_rate),
                     get_rate_change(last_retrieval_rate, prev_retrieval_rate)
                 ]
             }
@@ -184,16 +210,20 @@ def create_dashboard_view(summary_df, error_summary_df, all_data, key_prefix):
 
         elif not summary_df.empty: # Handle case with only one day of data
             last_day_stats = summary_df.iloc[-1]
-            stow_rate = (last_day_stats['Packages Stowed'] / last_day_stats['Stow Attempts'] * 100) if last_day_stats['Stow Attempts'] > 0 else 0
+            pickup_rate = (last_day_stats['Packages Picked Up'] / last_day_stats['Pickup Attempts'] * 100) if last_day_stats['Pickup Attempts'] > 0 else 0
+            pick_rate = (last_day_stats['Packages Picked'] / last_day_stats['Pick Attempts'] * 100) if last_day_stats['Pick Attempts'] > 0 else 0
             retrieval_rate = (last_day_stats['Packages Retrieved'] / last_day_stats['Retrieval Attempts'] * 100) if last_day_stats['Retrieval Attempts'] > 0 else 0
             
             # For a single day, Overall Average is the same as Most Recent Day
             most_recent_values = [
+                f"{last_day_stats['Package Pickup Avg (s)']:.2f}" if pd.notna(last_day_stats['Package Pickup Avg (s)']) else "N/A",
+                f"{last_day_stats['Package Pick Avg (s)']:.2f}" if pd.notna(last_day_stats['Package Pick Avg (s)']) else "N/A",
                 f"{last_day_stats['Stow Avg (s)']:.2f}" if pd.notna(last_day_stats['Stow Avg (s)']) else "N/A",
                 f"{last_day_stats['Retrieve Avg (s)']:.2f}" if pd.notna(last_day_stats['Retrieve Avg (s)']) else "N/A",
                 f"{last_day_stats['Read Label Avg (s)']:.2f}" if pd.notna(last_day_stats['Read Label Avg (s)']) else "N/A",
                 f"{last_day_stats['Throughput (pkg/hr)']:.2f}" if pd.notna(last_day_stats['Throughput (pkg/hr)']) else "N/A",
-                f"{stow_rate:.2f}%",
+                f"{pickup_rate:.2f}%",
+                f"{pick_rate:.2f}%",
                 f"{retrieval_rate:.2f}%"
             ]
             
@@ -379,41 +409,101 @@ def create_dashboard_view(summary_df, error_summary_df, all_data, key_prefix):
         with col1:
             st.markdown("<h4>Average Process Times</h4>", unsafe_allow_html=True)
             
-            # Create a copy of the dataframe for display purposes
-            display_df = summary_df.copy()
-            if 'Stow Avg (s)' in display_df.columns:
-                display_df = display_df.rename(columns={'Stow Avg (s)': 'Package Pickup Avg (s)'})
-            
-            fig = px.line(display_df, x='Log', y=['Package Pickup Avg (s)', 'Retrieve Avg (s)', 'Read Label Avg (s)'], markers=True)
-            fig.update_xaxes(dtick=1) # Set x-axis ticks to integers
+            fig = px.line(summary_df, x='Log', y=['Package Pickup Avg (s)', 'Package Pick Avg (s)', 'Stow Avg (s)', 'Retrieve Avg (s)', 'Read Label Avg (s)'], markers=True)
+            fig.update_xaxes(dtick=1)
             fig.update_yaxes(title_text='Time (s)')
             st.plotly_chart(fig, use_container_width=True)
 
-            st.markdown("<h4>Packages Stowed vs. Attempts</h4>", unsafe_allow_html=True)
-            fig2 = go.Figure(data=[
-                go.Bar(name='Packages Stowed', x=summary_df['Log'], y=summary_df['Packages Stowed']),
-                go.Bar(name='Stow Attempts', x=summary_df['Log'], y=summary_df['Stow Attempts'])
-            ])
-            fig2.update_layout(barmode='group', yaxis_title='Count')
-            fig2.update_xaxes(dtick=1, title_text='Log')
+        with col2:
+            st.markdown("<h4>Success Rates Over Time</h4>", unsafe_allow_html=True)
+            
+            # Calculate success rates for trend chart
+            display_df = summary_df.copy()
+            display_df['Pickup Success Rate'] = (display_df['Packages Picked Up'] / display_df['Pickup Attempts'] * 100).fillna(0)
+            display_df['Pick Success Rate'] = (display_df['Packages Picked'] / display_df['Pick Attempts'] * 100).fillna(0)
+            display_df['Retrieval Success Rate'] = (display_df['Packages Retrieved'] / display_df['Retrieval Attempts'] * 100).fillna(0)
+            
+            fig2 = px.line(display_df, x='Log', y=['Pickup Success Rate', 'Pick Success Rate', 'Retrieval Success Rate'], markers=True)
+            fig2.update_xaxes(dtick=1)
+            fig2.update_yaxes(title_text='Success Rate (%)', range=[0, 100])
             st.plotly_chart(fig2, use_container_width=True)
 
-        with col2:
-            st.markdown("<h4>Throughput Over Time</h4>", unsafe_allow_html=True)
-            fig3 = px.line(summary_df, x='Log', y='Throughput (pkg/hr)', markers=True)
-            fig3.update_xaxes(dtick=1)
-            st.plotly_chart(fig3, use_container_width=True)
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("<h4>Package Pickup Performance</h4>", unsafe_allow_html=True)
+        
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            name='Packages Picked Up',
+            x=summary_df['Log'],
+            y=summary_df['Packages Picked Up'],
+            marker_color='lightgreen'
+        ))
+        fig.add_trace(go.Bar(
+            name='Failed Pickups',
+            x=summary_df['Log'],
+            y=summary_df['Pickup Attempts'] - summary_df['Packages Picked Up'],
+            marker_color='lightcoral'
+        ))
+        
+        fig.update_layout(
+            barmode='stack',
+            title='Daily Package Pickup Performance',
+            xaxis_title='Date',
+            yaxis_title='Number of Packages'
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        st.markdown("<h4>Package Pick Performance</h4>", unsafe_allow_html=True)
+        
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            name='Packages Picked',
+            x=summary_df['Log'],
+            y=summary_df['Packages Picked'],
+            marker_color='lightblue'
+        ))
+        fig.add_trace(go.Bar(
+            name='Failed Picks',
+            x=summary_df['Log'],
+            y=summary_df['Pick Attempts'] - summary_df['Packages Picked'],
+            marker_color='orange'
+        ))
+        
+        fig.update_layout(
+            barmode='stack',
+            title='Daily Package Pick Performance',
+            xaxis_title='Date',
+            yaxis_title='Number of Packages'
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
-            st.markdown("<h4>Packages Retrieved vs. Attempts</h4>", unsafe_allow_html=True)
-            fig4 = go.Figure(data=[
-                go.Bar(name='Packages Retrieved', x=summary_df['Log'], y=summary_df['Packages Retrieved']),
-                go.Bar(name='Retrieval Attempts', x=summary_df['Log'], y=summary_df['Retrieval Attempts'])
-            ])
-            fig4.update_layout(barmode='group', yaxis_title='Count')
-            fig4.update_xaxes(dtick=1, title_text='Log')
-            st.plotly_chart(fig4, use_container_width=True)
-    else:
-        st.info("Need at least two days of data to show trend charts.")
+    with col3:
+        st.markdown("<h4>Package Retrieval Performance</h4>", unsafe_allow_html=True)
+        
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            name='Packages Retrieved',
+            x=summary_df['Log'],
+            y=summary_df['Packages Retrieved'],
+            marker_color='lightyellow'
+        ))
+        fig.add_trace(go.Bar(
+            name='Failed Retrievals',
+            x=summary_df['Log'],
+            y=summary_df['Retrieval Attempts'] - summary_df['Packages Retrieved'],
+            marker_color='lightpink'
+        ))
+        
+        fig.update_layout(
+            barmode='stack',
+            title='Daily Package Retrieval Performance',
+            xaxis_title='Date',
+            yaxis_title='Number of Packages'
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
     # --- Day-by-Day Table ---
     st.header("Daily Performance", divider='orange')
@@ -424,8 +514,8 @@ def create_dashboard_view(summary_df, error_summary_df, all_data, key_prefix):
 
     # Define which columns need specific decimal formatting.
     cols_to_format = [
-        'Stow Avg (s)', 'Retrieve Avg (s)', 'Read Label Avg (s)', 
-        'Throughput (pkg/hr)', 'Stow Driver Shift Time (hr)', 
+        'Package Pickup Avg (s)', 'Package Pick Avg (s)', 'Stow Avg (s)', 
+        'Retrieve Avg (s)', 'Read Label Avg (s)', 'Throughput (pkg/hr)', 'Stow Driver Shift Time (hr)', 
         'Retrieve Driver Shift Time (hr)'
     ]
 
@@ -435,8 +525,34 @@ def create_dashboard_view(summary_df, error_summary_df, all_data, key_prefix):
             # The summary_df was already converted to numeric, so we can safely format.
             display_df[col] = display_df[col].apply(lambda x: f'{x:.2f}' if pd.notna(x) else 'N/A')
 
-    # Display the fully formatted dataframe.
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    # Calculate success rates
+    display_df['Pickup Success Rate (%)'] = (display_df['Packages Picked Up'] / display_df['Pickup Attempts'] * 100).round(2)
+    display_df['Pick Success Rate (%)'] = (display_df['Packages Picked'] / display_df['Pick Attempts'] * 100).round(2)
+    display_df['Retrieval Success Rate (%)'] = (display_df['Packages Retrieved'] / display_df['Retrieval Attempts'] * 100).round(2)
+    
+    # Select and rename columns for display
+    cols_to_show = [
+        'Log', 'Package Pickup Avg (s)', 'Package Pick Avg (s)', 'Stow Avg (s)',
+        'Retrieve Avg (s)', 'Read Label Avg (s)', 'Throughput (pkg/hr)',
+        'Packages Picked Up', 'Pickup Attempts', 'Pickup Success Rate (%)',
+        'Packages Picked', 'Pick Attempts', 'Pick Success Rate (%)',
+        'Packages Retrieved', 'Retrieval Attempts', 'Retrieval Success Rate (%)',
+        'Total Errors'
+    ]
+    
+    display_df = display_df[cols_to_show]
+    
+    # Format columns
+    cols_to_format = [
+        'Package Pickup Avg (s)', 'Package Pick Avg (s)', 'Stow Avg (s)',
+        'Retrieve Avg (s)', 'Read Label Avg (s)', 'Throughput (pkg/hr)'
+    ]
+    
+    for col in cols_to_format:
+        if col in display_df.columns:
+            display_df[col] = display_df[col].round(2)
+    
+    st.dataframe(display_df, use_container_width=True)
 
     # --- Daily Detail Section ---
     st.subheader("Daily Detailed Report")
@@ -457,17 +573,23 @@ def create_dashboard_view(summary_df, error_summary_df, all_data, key_prefix):
             event_log_end_row = summary_start_indices.min() - 2 if not summary_start_indices.empty else len(day_df)
 
             # --- Extract Event Logs and find the last row for positioning the error log ---
-            stow_events = day_df.iloc[:event_log_end_row, 0:3].dropna(how='all')
-            retrieve_events = day_df.iloc[:event_log_end_row, 3:6].dropna(how='all')
-            read_label_events = day_df.iloc[:event_log_end_row, 8:11].dropna(how='all')
+            pickup_events = day_df.iloc[:event_log_end_row, 0:3].dropna(how='all')      # Columns A-C: Pickup
+            pick_events = day_df.iloc[:event_log_end_row, 3:6].dropna(how='all')       # Columns D-F: Pick
+            retrieve_events = day_df.iloc[:event_log_end_row, 6:9].dropna(how='all')   # Columns G-I: Retrieve  
+            read_label_events = day_df.iloc[:event_log_end_row, 9:12].dropna(how='all') # Columns J-L: Read Label
 
             # --- Standardize Column Headers ---
             clean_headers = ['Timestamp', 'Event Label', 'Time (s)']
             
-            if stow_events.empty:
-                stow_events = pd.DataFrame([['N/A', 'N/A', 'N/A']], columns=clean_headers)
+            if pickup_events.empty:
+                pickup_events = pd.DataFrame([['N/A', 'N/A', 'N/A']], columns=clean_headers)
             else:
-                stow_events.columns = clean_headers
+                pickup_events.columns = clean_headers
+
+            if pick_events.empty:
+                pick_events = pd.DataFrame([['N/A', 'N/A', 'N/A']], columns=clean_headers)
+            else:
+                pick_events.columns = clean_headers
 
             if retrieve_events.empty:
                 retrieve_events = pd.DataFrame([['N/A', 'N/A', 'N/A']], columns=clean_headers)
@@ -482,40 +604,60 @@ def create_dashboard_view(summary_df, error_summary_df, all_data, key_prefix):
                 else:
                     read_label_events = pd.DataFrame([['N/A', 'N/A', 'N/A']], columns=clean_headers)
 
-            last_stow_idx = stow_events.index[-1] if not stow_events.empty else -1
+            last_pickup_idx = pickup_events.index[-1] if not pickup_events.empty else -1
+            last_pick_idx = pick_events.index[-1] if not pick_events.empty else -1
             last_retrieve_idx = retrieve_events.index[-1] if not retrieve_events.empty else -1
             last_read_label_idx = read_label_events.index[-1] if not read_label_events.empty else -1
             
-            furthest_down_row = max(last_stow_idx, last_retrieve_idx, last_read_label_idx)
+            furthest_down_row = max(last_pickup_idx, last_pick_idx, last_retrieve_idx, last_read_label_idx)
 
             # --- Display Summaries and Event Logs in Columns ---
             st.subheader("Event Logs & Summaries")
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
 
             with col1:
-                st.markdown("<h4>Stow Summary</h4>", unsafe_allow_html=True)
+                st.markdown("<h4>Pickup Summary</h4>", unsafe_allow_html=True)
                 if not summary_start_indices.empty:
                     summary_start_row = summary_start_indices.min()
-                    stow_summary_df = day_df.iloc[summary_start_row:summary_start_row+3, 0:2].dropna(how='all', axis=1).reset_index(drop=True)
-                    if stow_summary_df.shape[1] == 2:
-                        stow_summary_df.columns = ["Metric", "Time (s)"]
+                    pickup_summary_df = day_df.iloc[summary_start_row:summary_start_row+3, 0:2].dropna(how='all', axis=1).reset_index(drop=True)
+                    if pickup_summary_df.shape[1] == 2:
+                        pickup_summary_df.columns = ["Metric", "Time (s)"]
                     else:
-                        stow_summary_df = pd.DataFrame({'Metric': ['Average', 'Min', 'Max'], 'Time (s)': ['N/A', 'N/A', 'N/A']})
+                        pickup_summary_df = pd.DataFrame({'Metric': ['Average', 'Min', 'Max'], 'Time (s)': ['N/A', 'N/A', 'N/A']})
                 else:
-                    stow_summary_df = pd.DataFrame({'Metric': ['Average', 'Min', 'Max'], 'Time (s)': ['N/A', 'N/A', 'N/A']})
-                st.dataframe(stow_summary_df, use_container_width=True, hide_index=True)
+                    pickup_summary_df = pd.DataFrame({'Metric': ['Average', 'Min', 'Max'], 'Time (s)': ['N/A', 'N/A', 'N/A']})
+                st.dataframe(pickup_summary_df, use_container_width=True, hide_index=True)
                 
-                st.markdown("<h4>Stow Events</h4>", unsafe_allow_html=True)
-                stow_df_display = stow_events.reset_index(drop=True)
-                stow_df_display.index = stow_df_display.index + 1
-                stow_df_display.index.name = '#'
-                st.dataframe(stow_df_display, use_container_width=True)
+                st.markdown("<h4>Pickup Events</h4>", unsafe_allow_html=True)
+                pickup_df_display = pickup_events.reset_index(drop=True)
+                pickup_df_display.index = pickup_df_display.index + 1
+                pickup_df_display.index.name = '#'
+                st.dataframe(pickup_df_display, use_container_width=True)
 
             with col2:
+                st.markdown("<h4>Pick Summary</h4>", unsafe_allow_html=True)
+                if not summary_start_indices.empty:
+                    summary_start_row = summary_start_indices.min()
+                    pick_summary_df = day_df.iloc[summary_start_row:summary_start_row+3, 3:5].dropna(how='all', axis=1).reset_index(drop=True)
+                    if pick_summary_df.shape[1] == 2:
+                        pick_summary_df.columns = ["Metric", "Time (s)"]
+                    else:
+                        pick_summary_df = pd.DataFrame({'Metric': ['Average', 'Min', 'Max'], 'Time (s)': ['N/A', 'N/A', 'N/A']})
+                else:
+                    pick_summary_df = pd.DataFrame({'Metric': ['Average', 'Min', 'Max'], 'Time (s)': ['N/A', 'N/A', 'N/A']})
+                st.dataframe(pick_summary_df, use_container_width=True, hide_index=True)
+
+                st.markdown("<h4>Pick Events</h4>", unsafe_allow_html=True)
+                pick_df_display = pick_events.reset_index(drop=True)
+                pick_df_display.index = pick_df_display.index + 1
+                pick_df_display.index.name = '#'
+                st.dataframe(pick_df_display, use_container_width=True)
+
+            with col3:
                 st.markdown("<h4>Retrieve Summary</h4>", unsafe_allow_html=True)
                 if not summary_start_indices.empty:
                     summary_start_row = summary_start_indices.min()
-                    retrieve_summary_df = day_df.iloc[summary_start_row:summary_start_row+3, 3:5].dropna(how='all', axis=1).reset_index(drop=True)
+                    retrieve_summary_df = day_df.iloc[summary_start_row:summary_start_row+3, 6:8].dropna(how='all', axis=1).reset_index(drop=True)
                     if retrieve_summary_df.shape[1] == 2:
                         retrieve_summary_df.columns = ["Metric", "Time (s)"]
                     else:
@@ -530,11 +672,11 @@ def create_dashboard_view(summary_df, error_summary_df, all_data, key_prefix):
                 retrieve_df_display.index.name = '#'
                 st.dataframe(retrieve_df_display, use_container_width=True)
 
-            with col3:
+            with col4:
                 st.markdown("<h4>Read Label Summary</h4>", unsafe_allow_html=True)
                 if not summary_start_indices.empty:
                     summary_start_row = summary_start_indices.min()
-                    read_label_summary_df = day_df.iloc[summary_start_row:summary_start_row+3, 8:10].dropna(how='all', axis=1).reset_index(drop=True)
+                    read_label_summary_df = day_df.iloc[summary_start_row:summary_start_row+3, 9:11].dropna(how='all', axis=1).reset_index(drop=True)
                     if read_label_summary_df.shape[1] == 2:
                         read_label_summary_df.columns = ["Metric", "Time (s)"]
                     else:

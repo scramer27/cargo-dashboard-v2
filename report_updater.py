@@ -188,7 +188,10 @@ def update_master_report(log_file_paths, excel_path, target_sheet_name):
 
     updated_summary_df.sort_values(by='Day', inplace=True)
     # define the column order for the master summary sheet
-    cols = ['Day', 'Date', 'Stow Avg (s)', 'Retrieve Avg (s)', 'Read Label Avg (s)', 'Packages Stowed', 'Stow Attempts', 'Packages Retrieved', 'Retrieval Attempts', 'Throughput (pkg/hr)', 'Total Errors', 'Stow Driver Shift Time (hr)', 'Retrieve Driver Shift Time (hr)']
+    cols = ['Day', 'Date', 'Package Pickup Avg (s)', 'Package Pick Avg (s)', 'Stow Avg (s)', 'Retrieve Avg (s)', 'Read Label Avg (s)', 
+            'Packages Picked Up', 'Pickup Attempts', 'Packages Picked', 'Pick Attempts', 
+            'Packages Retrieved', 'Retrieval Attempts', 'Throughput (pkg/hr)', 'Total Errors', 
+            'Pickup Driver Shift Time (hr)', 'Pick Driver Shift Time (hr)', 'Retrieve Driver Shift Time (hr)']
     updated_summary_df = updated_summary_df.reindex(columns=cols)
 
     with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
@@ -211,35 +214,41 @@ def update_master_report(log_file_paths, excel_path, target_sheet_name):
         for daily_data in new_daily_data:
             sheet_name = f"Day {daily_data['summary']['Day']}"
             
-            stow_df = daily_data["stow_events"]
-            retrieve_df = daily_data["retrieve_events"]
+            # NEW: Get separate pickup and pick events
+            pickup_df = daily_data.get("pickup_events", pd.DataFrame())
+            pick_df = daily_data.get("pick_events", pd.DataFrame())
+            retrieve_df = daily_data["retrieve_events"]  # UNCHANGED
             read_label_df = daily_data["read_label_events"]
             failures_df = daily_data["failures"]
 
-            # write the main dataframes to the sheet
-            stow_df.to_excel(writer, sheet_name=sheet_name, startrow=0, startcol=0, index=False)
-            retrieve_df.to_excel(writer, sheet_name=sheet_name, startrow=0, startcol=3, index=False)
-            read_label_df.to_excel(writer, sheet_name=sheet_name, startrow=0, startcol=8, index=False)
+            # Write the main dataframes to the sheet
+            pickup_df.to_excel(writer, sheet_name=sheet_name, startrow=0, startcol=0, index=False)      # Column A-C: Pickup
+            pick_df.to_excel(writer, sheet_name=sheet_name, startrow=0, startcol=3, index=False)        # Column D-F: Pick  
+            retrieve_df.to_excel(writer, sheet_name=sheet_name, startrow=0, startcol=6, index=False)    # Column G-I: Retrieve
+            read_label_df.to_excel(writer, sheet_name=sheet_name, startrow=0, startcol=9, index=False) # Column J-L: Read Label
             
-            max_len = max(len(stow_df), len(retrieve_df), len(read_label_df))
+            max_len = max(len(pickup_df), len(pick_df), len(retrieve_df), len(read_label_df))
             current_row = max_len + 2 # add some space
             
-            stats_stow = get_stats_df(stow_df, 'Time (s)')
+            stats_pickup = get_stats_df(pickup_df, 'Time (s)')
+            stats_pick = get_stats_df(pick_df, 'Time (s)')
             stats_retrieve = get_stats_df(retrieve_df, 'Time (s)')
             stats_read_label = get_stats_df(read_label_df, 'Time (s)')
             
-            stats_stow.to_excel(writer, sheet_name=sheet_name, startrow=current_row, startcol=0)
-            stats_retrieve.to_excel(writer, sheet_name=sheet_name, startrow=current_row, startcol=3)
-            stats_read_label.to_excel(writer, sheet_name=sheet_name, startrow=current_row, startcol=8)
+            stats_pickup.to_excel(writer, sheet_name=sheet_name, startrow=current_row, startcol=0)
+            stats_pick.to_excel(writer, sheet_name=sheet_name, startrow=current_row, startcol=3)
+            stats_retrieve.to_excel(writer, sheet_name=sheet_name, startrow=current_row, startcol=6)
+            stats_read_label.to_excel(writer, sheet_name=sheet_name, startrow=current_row, startcol=9)
             
-            current_row += len(stats_stow) + 2
+            current_row += len(stats_pickup) + 2
             if not failures_df.empty:
                 failures_df.to_excel(writer, sheet_name=sheet_name, startrow=current_row, index=False)
                 current_row += len(failures_df) + 2
             
             # write chart data (charts will be added in the final pass)
             chart_start_row = current_row
-            chart_start_row = add_distribution_chart(writer, sheet_name, stow_df, 'Time (s)', 'Stow Time Distribution', chart_start_row, 0)
+            chart_start_row = add_distribution_chart(writer, sheet_name, pickup_df, 'Time (s)', 'Pickup Time Distribution', chart_start_row, 0)
+            chart_start_row = add_distribution_chart(writer, sheet_name, pick_df, 'Time (s)', 'Pick Time Distribution', chart_start_row, 0)
             chart_start_row = add_distribution_chart(writer, sheet_name, retrieve_df, 'Time (s)', 'Retrieve Time Distribution', chart_start_row, 0)
             chart_start_row = add_distribution_chart(writer, sheet_name, read_label_df, 'Time (s)', 'Read Label Time Distribution', chart_start_row, 0)
             add_throughput_chart(writer, sheet_name, daily_data["raw_retrieve_events"], chart_start_row, 0)
@@ -258,8 +267,8 @@ def update_master_report(log_file_paths, excel_path, target_sheet_name):
         if sheet_name.startswith('Day '):
             ws_day = wb[sheet_name]
             
-            # main data headers: stow(4), retrieve(5), read label(3)
-            for col in list(range(1, 5)) + list(range(6, 11)) + list(range(12, 15)):
+            # main data headers: pickup(3), pick(3), retrieve(3), read label(3)
+            for col in list(range(1, 4)) + list(range(4, 7)) + list(range(7, 10)) + list(range(10, 13)):
                 apply_cell_style(ws_day.cell(row=2, column=col))
 
             # find and style headers, and find chart data locations
@@ -269,9 +278,9 @@ def update_master_report(log_file_paths, excel_path, target_sheet_name):
                 if cell_val == 'Average':
                     stats_row = r
                     for r_offset in range(3):
-                        for c_base in [1, 6, 12]:
+                        for c_base in [1, 4, 7, 10]:
                             apply_cell_style(ws_day.cell(row=stats_row + r_offset, column=c_base))
-                    for c_base in [2, 7, 13]:
+                    for c_base in [2, 5, 8, 11]:
                         apply_cell_style(ws_day.cell(row=stats_row - 1, column=c_base))
                 elif cell_val == 'Timestamp' and ws_day.cell(row=r-1, column=1).value is None:
                     failures_row = r
