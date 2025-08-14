@@ -6,7 +6,7 @@ from openpyxl import load_workbook
 from openpyxl.chart import LineChart, Reference, BarChart
 from openpyxl.drawing.image import Image
 from openpyxl.styles import Font, Border, Side
-from log_parser import process_log_file, calculate_hourly_throughput
+from log_parser import process_log_file
 import numpy as np
 import io
 
@@ -44,26 +44,7 @@ def create_plots(daily_data, day_str):
     plt.savefig(dist_plot_path)
     plt.close(fig1)
     plot_paths['distribution'] = dist_plot_path
-
-    # --- throughput plot ---
-    hourly_counts = calculate_hourly_throughput(daily_data["raw_retrieve_events"])
-    if hourly_counts:
-        sorted_hours = sorted(hourly_counts.keys())
-        counts = [hourly_counts[hour] for hour in sorted_hours]
-        
-        fig2, ax = plt.subplots(figsize=(12, 6))
-        ax.bar(sorted_hours, counts, color='green', edgecolor='black')
-        ax.set_title(f'Hourly Package Retrieval Throughput for {day_str}', fontsize=16)
-        ax.set_xlabel('Hour')
-        ax.set_ylabel('Number of Packages Retrieved')
-        plt.xticks(rotation=45, ha='right')
-        plt.tight_layout()
-        
-        throughput_plot_path = f"{day_str}_throughput.png"
-        plt.savefig(throughput_plot_path)
-        plt.close(fig2)
-        plot_paths['throughput'] = throughput_plot_path
-        
+    
     return plot_paths
 
 def get_stats_df(df, column_name):
@@ -101,24 +82,6 @@ def add_distribution_chart(writer, sheet_name, df, col_name, chart_title, start_
     
     # chart creation is handled in the final pass
     return start_row + len(hist_df) + 2
-
-def add_throughput_chart(writer, sheet_name, retrieve_df, start_row, start_col):
-    """calculates hourly throughput, writes it to excel, and adds a chart."""
-    if retrieve_df.empty:
-        return start_row
-
-    hourly_counts = calculate_hourly_throughput(retrieve_df)
-    if not hourly_counts:
-        return start_row
-
-    sorted_hours = sorted(hourly_counts.keys())
-    counts = [hourly_counts[hour] for hour in sorted_hours]
-    throughput_df = pd.DataFrame({'Hour': sorted_hours, 'Packages Retrieved': counts})
-
-    throughput_df.to_excel(writer, sheet_name=sheet_name, startrow=start_row, startcol=start_col, index=False)
-
-    # chart creation is handled in the final pass
-    return start_row + len(throughput_df) + 2
 
 def apply_cell_style(cell):
     """applies a bold font and thin border to a cell."""
@@ -182,13 +145,22 @@ def update_master_report(log_file_paths, excel_path, target_sheet_name):
     else:
         updated_error_summary_df = error_summary_df
 
-    for col in ['Stow Avg (s)', 'Retrieve Avg (s)', 'Read Label Avg (s)', 'Throughput (pkg/hr)']:
+    for col in ['Stow Avg (s)', 'Retrieve Avg (s)', 'Read Label Avg (s)']:
         if col in updated_summary_df.columns:
             updated_summary_df[col] = updated_summary_df[col].apply(lambda x: f"{x:.2f}" if isinstance(x, (int, float)) else 'N/A')
 
     updated_summary_df.sort_values(by='Day', inplace=True)
     # define the column order for the master summary sheet
-    cols = ['Day', 'Date', 'Stow Avg (s)', 'Retrieve Avg (s)', 'Read Label Avg (s)', 'Packages Stowed', 'Stow Attempts', 'Packages Retrieved', 'Retrieval Attempts', 'Throughput (pkg/hr)', 'Total Errors', 'Stow Driver Shift Time (hr)', 'Retrieve Driver Shift Time (hr)']
+    cols = [
+        'Day', 'Date', 
+        'Pickup Avg (s)', 'Placement Avg (s)', 'Stow Avg (s)', 
+        'Retrieve Avg (s)', 'Read Label Avg (s)', 
+        'Packages Picked Up', 'Pickup Attempts',
+        'Packages Placed', 'Placement Attempts', 
+        'Packages Retrieved', 'Retrieval Attempts', 
+        'Total Errors', 
+        'Stow Driver Shift Time (hr)', 'Retrieve Driver Shift Time (hr)'
+    ]
     updated_summary_df = updated_summary_df.reindex(columns=cols)
 
     with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
@@ -211,38 +183,44 @@ def update_master_report(log_file_paths, excel_path, target_sheet_name):
         for daily_data in new_daily_data:
             sheet_name = f"Day {daily_data['summary']['Day']}"
             
-            stow_df = daily_data["stow_events"]
+            # Get all 4 event types
+            pickup_df = daily_data.get("pickup_events", pd.DataFrame())
+            placement_df = daily_data.get("placement_events", pd.DataFrame())
             retrieve_df = daily_data["retrieve_events"]
             read_label_df = daily_data["read_label_events"]
             failures_df = daily_data["failures"]
 
-            # write the main dataframes to the sheet
-            stow_df.to_excel(writer, sheet_name=sheet_name, startrow=0, startcol=0, index=False)
-            retrieve_df.to_excel(writer, sheet_name=sheet_name, startrow=0, startcol=3, index=False)
-            read_label_df.to_excel(writer, sheet_name=sheet_name, startrow=0, startcol=8, index=False)
+            # Write the main dataframes to the sheet with new layout
+            pickup_df.to_excel(writer, sheet_name=sheet_name, startrow=0, startcol=0, index=False)       # Column A-C: Pickup
+            placement_df.to_excel(writer, sheet_name=sheet_name, startrow=0, startcol=3, index=False)    # Column D-F: Placement
+            retrieve_df.to_excel(writer, sheet_name=sheet_name, startrow=0, startcol=6, index=False)     # Column G-I: Retrieve
+            read_label_df.to_excel(writer, sheet_name=sheet_name, startrow=0, startcol=9, index=False)  # Column J-L: Read Label
             
-            max_len = max(len(stow_df), len(retrieve_df), len(read_label_df))
-            current_row = max_len + 2 # add some space
+            max_len = max(len(pickup_df), len(placement_df), len(retrieve_df), len(read_label_df))
+            current_row = max_len + 2
             
-            stats_stow = get_stats_df(stow_df, 'Time (s)')
+            # Calculate and write statistics for all 4 event types
+            stats_pickup = get_stats_df(pickup_df, 'Time (s)')
+            stats_placement = get_stats_df(placement_df, 'Time (s)')
             stats_retrieve = get_stats_df(retrieve_df, 'Time (s)')
             stats_read_label = get_stats_df(read_label_df, 'Time (s)')
             
-            stats_stow.to_excel(writer, sheet_name=sheet_name, startrow=current_row, startcol=0)
-            stats_retrieve.to_excel(writer, sheet_name=sheet_name, startrow=current_row, startcol=3)
-            stats_read_label.to_excel(writer, sheet_name=sheet_name, startrow=current_row, startcol=8)
+            stats_pickup.to_excel(writer, sheet_name=sheet_name, startrow=current_row, startcol=0)
+            stats_placement.to_excel(writer, sheet_name=sheet_name, startrow=current_row, startcol=3)
+            stats_retrieve.to_excel(writer, sheet_name=sheet_name, startrow=current_row, startcol=6)
+            stats_read_label.to_excel(writer, sheet_name=sheet_name, startrow=current_row, startcol=9)
             
-            current_row += len(stats_stow) + 2
+            current_row += len(stats_pickup) + 2
             if not failures_df.empty:
                 failures_df.to_excel(writer, sheet_name=sheet_name, startrow=current_row, index=False)
                 current_row += len(failures_df) + 2
             
-            # write chart data (charts will be added in the final pass)
+            # Write chart data for all 4 event types
             chart_start_row = current_row
-            chart_start_row = add_distribution_chart(writer, sheet_name, stow_df, 'Time (s)', 'Stow Time Distribution', chart_start_row, 0)
+            chart_start_row = add_distribution_chart(writer, sheet_name, pickup_df, 'Time (s)', 'Pickup Time Distribution', chart_start_row, 0)
+            chart_start_row = add_distribution_chart(writer, sheet_name, placement_df, 'Time (s)', 'Placement Time Distribution', chart_start_row, 0)
             chart_start_row = add_distribution_chart(writer, sheet_name, retrieve_df, 'Time (s)', 'Retrieve Time Distribution', chart_start_row, 0)
             chart_start_row = add_distribution_chart(writer, sheet_name, read_label_df, 'Time (s)', 'Read Label Time Distribution', chart_start_row, 0)
-            add_throughput_chart(writer, sheet_name, daily_data["raw_retrieve_events"], chart_start_row, 0)
 
     # --- final formatting and charting pass ---
     wb = load_workbook(excel_path)
@@ -317,7 +295,7 @@ def update_master_report(log_file_paths, excel_path, target_sheet_name):
         ws = wb[target_sheet_name]
         # convert data to numeric for charting
         for col_idx, col_name in enumerate(updated_summary_df.columns, 1):
-            if '(s)' in col_name or 'Stowed' in col_name or 'Attempts' in col_name or 'Retrieved' in col_name or 'Throughput' in col_name or 'Errors' in col_name:
+            if '(s)' in col_name or 'Stowed' in col_name or 'Attempts' in col_name or 'Retrieved' in col_name or 'Errors' in col_name:
                  for row_idx, value in enumerate(updated_summary_df[col_name], 2):
                     try:
                         ws.cell(row=row_idx, column=col_idx).value = float(value)
@@ -337,34 +315,18 @@ def update_master_report(log_file_paths, excel_path, target_sheet_name):
         
         ws.add_chart(chart1, "A" + str(ws.max_row + 2))
 
-        # chart 2: throughput and errors
-        chart2 = LineChart()
-        chart2.title = "Throughput and Errors Over Time"
-        chart2.x_axis.title = "Day"
-        chart2.y_axis.title = "Throughput (pkg/hr)"
-
-        # throughput data
-        data_thr = Reference(ws, min_col=10, min_row=1, max_row=ws.max_row)
-        chart2.add_data(data_thr, titles_from_data=True)
-        chart2.set_categories(cats1)
-
         # create a second chart for the errors on a secondary axis
-        chart_err = LineChart()
-        data_err = Reference(ws, min_col=11, min_row=1, max_row=ws.max_row)
-        chart_err.add_data(data_err, titles_from_data=True)
-        chart_err.y_axis.axId = 200
-        chart_err.y_axis.title = "Total Errors"
-        
-        # the secondary chart's x-axis must also be on the secondary axis group
-        # and should be hidden so it doesn't overlap with the primary
-        chart_err.y_axis.crosses = "max"
-        chart_err.x_axis.axId = 200
-        chart_err.x_axis.hidden = True
-        
-        chart2 += chart_err # combine the charts
-        
-        ws.add_chart(chart2, "J" + str(ws.max_row + 2))
-        
+        chart1 = LineChart()
+        chart1.title = "Average Event Times Over Time"
+        chart1.y_axis.title = "Time (s)"
+        chart1.x_axis.title = "Day"
+    
+        data1 = Reference(ws, min_col=3, max_col=5, min_row=1, max_row=ws.max_row)
+        cats1 = Reference(ws, min_col=1, min_row=2, max_row=ws.max_row)
+        chart1.add_data(data1, titles_from_data=True)
+        chart1.set_categories(cats1)
+    
+        ws.add_chart(chart1, "A" + str(ws.max_row + 2))        
         wb.move_sheet(ws, offset=-len(wb.sheetnames))
     wb.save(excel_path)
 
