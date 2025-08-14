@@ -608,17 +608,23 @@ def create_dashboard_view(summary_df, error_summary_df, all_data, key_prefix):
 
             # --- Raw Log File Display Section ---
             st.subheader("Complete Log File")
-            
+
             if selected_day:
                 # Extract the day number from the selected day (e.g., "Day 1" -> "1")
                 day_number = selected_day.split(' ')[1]
                 
-                # Look for corresponding log files in the archive folder
+                # Look for corresponding log files in the appropriate archive folder
                 import glob
                 import json
                 
+                # Determine which archive folder to use based on the key_prefix
+                if key_prefix == "benchmark":
+                    archive_folder = "archive_benchmark"
+                else:
+                    archive_folder = "archive"
+                
                 # Search for log files that might correspond to this day
-                log_files = glob.glob("archive/logs_*.json")
+                log_files = glob.glob(f"{archive_folder}/logs_*.json")
                 
                 if log_files:
                     # Sort log files by date to match with day numbers
@@ -681,13 +687,13 @@ def create_dashboard_view(summary_df, error_summary_df, all_data, key_prefix):
                     except ValueError:
                         st.error("❌ Could not parse day number from selection.")
                 else:
-                    st.warning("⚠️ No log files found in the archive folder.")
+                    st.warning(f"⚠️ No log files found in the {archive_folder} folder.")
                     
                     # Also check if there are any log files in the logs folder
                     current_log_files = glob.glob("logs/*.json")
                     if current_log_files:
                         st.info(f"ℹ️ Found {len(current_log_files)} log files in the logs folder that haven't been processed yet.")
-            
+
             else:
                 st.info("👆 Select a day above to view the corresponding log file.")
 
