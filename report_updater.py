@@ -158,8 +158,7 @@ def update_master_report(log_file_paths, excel_path, target_sheet_name):
         'Packages Picked Up', 'Pickup Attempts',
         'Packages Placed', 'Placement Attempts', 
         'Packages Retrieved', 'Retrieval Attempts', 
-        'Total Errors', 
-        'Stow Driver Shift Time (hr)', 'Retrieve Driver Shift Time (hr)'
+        'Total Errors'
     ]
     updated_summary_df = updated_summary_df.reindex(columns=cols)
 

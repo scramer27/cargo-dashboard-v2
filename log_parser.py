@@ -334,9 +334,7 @@ def process_log_file(log_file_path):
         'Total Stow Attempts': pickup_attempts,
         'Packages Retrieved': total_packages_retrieved,
         'Retrieval Attempts': retrieval_attempts,
-        'Total Errors': total_error_count,
-        'Stow Driver Shift Time (hr)': stow_shift_time_hr,
-        'Retrieve Driver Shift Time (hr)': retrieve_shift_time_hr
+        'Total Errors': total_error_count
     }
 
     return {

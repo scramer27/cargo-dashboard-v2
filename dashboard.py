@@ -120,7 +120,6 @@ def create_dashboard_view(summary_df, error_summary_df, all_data, key_prefix):
         'Retrieve Avg (s)', 'Read Label Avg (s)', 
         'Packages Picked Up', 'Pickup Attempts', 'Packages Placed', 'Placement Attempts',
         'Packages Retrieved', 'Retrieval Attempts', 'Total Errors', 
-        'Stow Driver Shift Time (hr)', 'Retrieve Driver Shift Time (hr)'
     ]
     for col in numeric_cols:
         if col in summary_df.columns:
@@ -414,8 +413,6 @@ def create_dashboard_view(summary_df, error_summary_df, all_data, key_prefix):
     # Define which columns need specific decimal formatting.
     cols_to_format = [
         'Pickup Avg (s)', 'Placement Avg (s)', 'Stow Avg (s)', 'Retrieve Avg (s)', 'Read Label Avg (s)', 
-        'Stow Driver Shift Time (hr)', 
-        'Retrieve Driver Shift Time (hr)'
     ]
 
     # Apply formatting: 2 decimal places for numbers, and 'N/A' for any missing values.
